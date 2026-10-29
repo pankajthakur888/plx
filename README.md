@@ -4,6 +4,8 @@ A responsive, colorful quiz game for **2–8 players**. Three rounds, five quest
 
 > **Think fast. Beat your friends. Own the leaderboard.**
 
+![PLX-V0 Preview](screenshot.png)
+
 ## ✨ Features
 
 - 🎯 **Real multiplayer** — Create rooms, share codes, play across devices
