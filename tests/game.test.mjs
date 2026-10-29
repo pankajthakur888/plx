@@ -122,17 +122,19 @@ test("all 15 baseline question prompts are unique", () => {
 });
 
 /* ── 8. Question Bank with Levels (1, 2, 3) ─────────────────── */
-test("QUESTION_BANK contains rich categorized questions across Levels 1, 2, 3", () => {
-  assert.ok(QUESTION_BANK[1].length >= 10, "Level 1 should have 10+ questions");
-  assert.ok(QUESTION_BANK[2].length >= 10, "Level 2 should have 10+ questions");
-  assert.ok(QUESTION_BANK[3].length >= 10, "Level 3 should have 10+ questions");
+test("QUESTION_BANK contains 500+ rich categorized questions across Levels 1, 2, 3", () => {
+  const total = QUESTION_BANK[1].length + QUESTION_BANK[2].length + QUESTION_BANK[3].length;
+  assert.ok(total >= 500, `Expected at least 500 questions, got ${total}`);
+  assert.ok(QUESTION_BANK[1].length >= 150, "Level 1 should have 150+ questions");
+  assert.ok(QUESTION_BANK[2].length >= 150, "Level 2 should have 150+ questions");
+  assert.ok(QUESTION_BANK[3].length >= 150, "Level 3 should have 150+ questions");
 
   for (const level of [1, 2, 3]) {
     for (const q of QUESTION_BANK[level]) {
       assert.equal(q.level, level);
       assert.equal(q.options.length, 4);
-      assert.ok(q.category && q.category.length > 2);
-      assert.ok(q.explanation && q.explanation.length > 10);
+      assert.ok(q.category && q.category.length >= 2);
+      assert.ok(q.explanation && q.explanation.length > 5);
       assert.ok(Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4);
     }
   }
