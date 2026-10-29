@@ -257,6 +257,26 @@ function App() {
   };
 
   /* ── Room actions ────────────────────────────────────────────── */
+  const startSoloWarmup = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const playerName = name.trim() || "Warm-up Player";
+      const data = await callApi("create", {
+        name: playerName,
+        isSolo: true,
+        autoStart: true,
+      });
+      setSession(data.session as Session);
+      saveSession(data.session as Session);
+      setState(data.state as PublicState);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start solo warmup.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const createRoom = async () => {
     setLoading(true);
     setError("");
@@ -436,18 +456,32 @@ function App() {
               placeholder="e.g. Quiz Wizard"
               autoComplete="nickname"
             />
-            <button
-              className="btn btn-primary full"
-              disabled={loading || name.trim().length < 2}
-              onClick={() => void createRoom()}
-            >
-              {loading ? (
-                <LoaderCircle className="spin" />
-              ) : (
-                <Plus size={19} />
-              )}{" "}
-              Create a room <ArrowRight size={18} />
-            </button>
+            <div className="entry-actions">
+              <button
+                className="btn btn-primary full"
+                disabled={loading}
+                onClick={() => void startSoloWarmup()}
+              >
+                {loading ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <Sparkles size={18} />
+                )}{" "}
+                Start Solo Warm-up <ArrowRight size={18} />
+              </button>
+              <button
+                className="btn btn-secondary full"
+                disabled={loading || name.trim().length < 2}
+                onClick={() => void createRoom()}
+              >
+                {loading ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  <Plus size={18} />
+                )}{" "}
+                Create Multiplayer Room
+              </button>
+            </div>
             <div className="or-divider">
               <span /> OR <span />
             </div>
@@ -611,20 +645,27 @@ function App() {
             {isHost ? (
               <button
                 className="btn btn-primary full start-btn"
-                disabled={loading || state.players.length < 2}
+                disabled={loading}
                 onClick={() => void act("start")}
               >
-                <PartyPopper size={18} /> Start the battle{" "}
-                <ArrowRight size={18} />
+                {state.players.length === 1 ? (
+                  <>
+                    <Sparkles size={18} /> Start Solo Warm-up <ArrowRight size={18} />
+                  </>
+                ) : (
+                  <>
+                    <PartyPopper size={18} /> Start the Battle <ArrowRight size={18} />
+                  </>
+                )}
               </button>
             ) : (
               <div className="waiting-note">
                 <span className="pulse-dot" /> Waiting for the host to start…
               </div>
             )}
-            {isHost && state.players.length < 2 && (
+            {isHost && state.players.length === 1 && (
               <p className="center-note">
-                Invite at least one friend to unlock the start button.
+                Play solo for a quick warmup, or share the room code with friends!
               </p>
             )}
             <div className="game-rules-mini">
@@ -664,26 +705,62 @@ function App() {
           <div className="winner-confetti" aria-hidden="true">
             ✦　✹　✦　✧　✹　✦
           </div>
-          <div className="eyebrow centered">
-            <PartyPopper size={15} /> THAT&apos;S A WRAP
-          </div>
-          <h1 className="results-title">The crown goes to...</h1>
-          <div className="winner-card">
-            <div className="winner-crown">
-              <Crown size={35} />
-            </div>
-            <div className="winner-avatar">
-              {ordered[0]?.name.slice(0, 1).toUpperCase() ?? "?"}
-            </div>
-            <h2>{ordered[0]?.name ?? "No winner"}</h2>
-            <div className="winner-score">
-              {(ordered[0]?.score ?? 0).toLocaleString()}{" "}
-              <span>POINTS</span>
-            </div>
-            <p>
-              {ordered[0]?.correct ?? 0} correct answers · Absolutely iconic.
-            </p>
-          </div>
+          {state.isSolo ? (
+            <>
+              <div className="eyebrow centered">
+                <Sparkles size={15} /> SOLO PRACTICE SESSION
+              </div>
+              <h1 className="results-title">Warm-up Complete!</h1>
+              <div className="winner-card">
+                <div className="winner-crown">
+                  <Trophy size={35} />
+                </div>
+                <div className="winner-avatar">
+                  {ordered[0]?.name.slice(0, 1).toUpperCase() ?? "🎯"}
+                </div>
+                <h2>{ordered[0]?.name ?? "Player"}</h2>
+                <div className="winner-score">
+                  {(ordered[0]?.score ?? 0).toLocaleString()}{" "}
+                  <span>POINTS</span>
+                </div>
+                <div className="solo-eval-badge">
+                  {(ordered[0]?.correct ?? 0) >= 14
+                    ? "🏆 Flawless Mastermind!"
+                    : (ordered[0]?.correct ?? 0) >= 11
+                    ? "⚡ Quiz Whiz — High Speed!"
+                    : (ordered[0]?.correct ?? 0) >= 8
+                    ? "🧠 Great Warm-up — Sharp Brain!"
+                    : "🌱 Good Practice Session!"}
+                </div>
+                <p>
+                  {ordered[0]?.correct ?? 0} of 15 questions answered correctly.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="eyebrow centered">
+                <PartyPopper size={15} /> THAT&apos;S A WRAP
+              </div>
+              <h1 className="results-title">The crown goes to...</h1>
+              <div className="winner-card">
+                <div className="winner-crown">
+                  <Crown size={35} />
+                </div>
+                <div className="winner-avatar">
+                  {ordered[0]?.name.slice(0, 1).toUpperCase() ?? "?"}
+                </div>
+                <h2>{ordered[0]?.name ?? "No winner"}</h2>
+                <div className="winner-score">
+                  {(ordered[0]?.score ?? 0).toLocaleString()}{" "}
+                  <span>POINTS</span>
+                </div>
+                <p>
+                  {ordered[0]?.correct ?? 0} correct answers · Absolutely iconic.
+                </p>
+              </div>
+            </>
+          )}
           <div className="final-leaderboard">
             <h2>
               <Trophy size={20} /> Final leaderboard
@@ -790,9 +867,19 @@ function App() {
         {/* Question card */}
         <div className="question-card" key={state.questionIndex}>
           <div className="question-top">
-            <span className="category-pill">
-              <Sparkles size={14} /> GENERAL KNOWLEDGE
-            </span>
+            <div className="question-badges">
+              <span className={`level-pill level-${question?.level ?? 1}`}>
+                {question?.levelLabel ?? `Level ${question?.round ?? 1}`}
+              </span>
+              <span className="category-pill">
+                <Sparkles size={13} /> {question?.category?.toUpperCase() ?? "GENERAL"}
+              </span>
+              {state.isSolo && (
+                <span className="solo-pill">
+                  🎯 SOLO WARM-UP
+                </span>
+              )}
+            </div>
             <div
               className={`timer ${
                 seconds <= 3

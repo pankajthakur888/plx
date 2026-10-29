@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomInt, timingSafeEqual, createHash } from "node:crypto";
-import { QUESTIONS } from "./netlify/lib/questions.mjs";
+import { QUESTIONS, createMatchQuestions, LEVEL_LABELS } from "./netlify/lib/questions.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,7 +51,7 @@ function cleanName(value) {
   return name;
 }
 
-function initialRoom(code, player) {
+function initialRoom(code, player, isSolo = false) {
   const now = Date.now();
   return {
     code,
@@ -65,6 +65,8 @@ function initialRoom(code, player) {
     answers: {},
     answerTimes: {},
     createdAt: now,
+    isSolo: Boolean(isSolo),
+    questions: createMatchQuestions(true),
   };
 }
 
@@ -89,6 +91,7 @@ function sessionFor(room, player, token) {
 
 function advanceDue(room) {
   const now = Date.now();
+  const questions = room.questions || QUESTIONS;
 
   // Phase: playing → reveal (time expired or everyone answered)
   if (
@@ -97,7 +100,7 @@ function advanceDue(room) {
     (now >= room.questionDeadline ||
       room.players.every((p) => room.answers[p.id] !== undefined))
   ) {
-    const q = QUESTIONS[room.questionIndex];
+    const q = questions[room.questionIndex];
     for (const p of room.players) {
       const submitted = room.answers[p.id];
       if (submitted === q.answer) {
@@ -131,7 +134,7 @@ function advanceDue(room) {
     room.answerTimes = {};
     room.revealedQuestion = undefined;
 
-    if (room.questionIndex >= QUESTIONS.length) {
+    if (room.questionIndex >= questions.length) {
       room.status = "finished";
     } else {
       room.status = "playing";
@@ -144,6 +147,7 @@ function advanceDue(room) {
 
 function publicState(room, playerId) {
   const now = Date.now();
+  const questions = room.questions || QUESTIONS;
   const ordered = [...room.players].sort(
     (a, b) =>
       b.score - a.score ||
@@ -151,8 +155,8 @@ function publicState(room, playerId) {
       a.joinedAt - b.joinedAt
   );
   const currentQuestion =
-    room.questionIndex < QUESTIONS.length
-      ? QUESTIONS[room.questionIndex]
+    room.questionIndex < questions.length
+      ? questions[room.questionIndex]
       : undefined;
   const reveal = room.status === "reveal" || room.status === "finished";
 
@@ -161,9 +165,10 @@ function publicState(room, playerId) {
       roomCode: room.code,
       status: room.status,
       hostId: room.hostId,
+      isSolo: Boolean(room.isSolo || room.players.length === 1),
       round: Math.min(3, Math.floor(room.questionIndex / 5) + 1),
       questionIndex: room.questionIndex,
-      totalQuestions: QUESTIONS.length,
+      totalQuestions: questions.length,
       serverNow: now,
       players: room.players.map((p) => ({
         id: p.id,
@@ -191,7 +196,10 @@ function publicState(room, playerId) {
               round: Math.min(3, Math.floor(room.questionIndex / 5) + 1),
               questionNumber: room.questionIndex + 1,
               deadline: room.questionDeadline ?? now,
-              totalQuestions: QUESTIONS.length,
+              totalQuestions: questions.length,
+              level: currentQuestion?.level ?? Math.min(3, Math.floor(room.questionIndex / 5) + 1),
+              levelLabel: currentQuestion?.levelLabel ?? LEVEL_LABELS[Math.min(3, Math.floor(room.questionIndex / 5) + 1)],
+              category: currentQuestion?.category ?? "General",
             },
           }
         : {}),
@@ -214,6 +222,7 @@ function handleGameAction(body) {
 
   if (action === "create") {
     const name = cleanName(body.name);
+    const isSolo = Boolean(body.isSolo);
     let code = "";
     for (let attempt = 0; attempt < 10; attempt++) {
       const candidate = makeCode();
@@ -235,7 +244,18 @@ function handleGameAction(body) {
       lastSeen: Date.now(),
       isHost: true,
     };
-    const room = initialRoom(code, player);
+    const room = initialRoom(code, player, isSolo);
+
+    // If solo mode was requested with immediate start, jump right into playing
+    if (isSolo && body.autoStart) {
+      const now = Date.now();
+      room.status = "playing";
+      room.startedAt = now;
+      room.questionStartedAt = now;
+      room.questionDeadline = now + QUESTION_MS;
+      room.updatedAt = now;
+    }
+
     rooms.set(code, room);
     return {
       session: sessionFor(room, player, token),
@@ -306,7 +326,10 @@ function handleGameAction(body) {
   if (action === "start") {
     if (player.id !== room.hostId) throw new Error("Only the room host can start the game.");
     if (room.status !== "lobby") throw new Error("This game has already started.");
-    if (room.players.length < 2) throw new Error("At least two players are required.");
+
+    if (room.players.length === 1) {
+      room.isSolo = true;
+    }
 
     const now = Date.now();
     room.status = "playing";

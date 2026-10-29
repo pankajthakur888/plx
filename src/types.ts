@@ -17,6 +17,9 @@ export type PublicQuestion = {
   questionNumber: number;
   deadline: number;
   totalQuestions: number;
+  level: number;
+  levelLabel: string;
+  category: string;
 };
 
 export type PublicState = {
@@ -35,6 +38,7 @@ export type PublicState = {
   leaderboard: PublicPlayer[];
   message?: string;
   serverNow: number;
+  isSolo?: boolean;
 };
 
 export type ApiError = { error: string };

@@ -849,6 +849,43 @@ button:disabled {
   justify-content: space-between;
 }
 
+.question-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.level-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.level-1 {
+  background: #e6faf2;
+  color: #0b8a5d;
+  border: 1px solid #c0f2de;
+}
+
+.level-2 {
+  background: #fff8e5;
+  color: #b37400;
+  border: 1px solid #ffe8aa;
+}
+
+.level-3 {
+  background: #fbf0ff;
+  color: #8c2db5;
+  border: 1px solid #ebd0ff;
+}
+
 .category-pill {
   display: inline-flex;
   align-items: center;
@@ -856,10 +893,71 @@ button:disabled {
   background: #f2edff;
   color: #6e4bd0;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.solo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ffebe6;
+  color: #d13f1c;
+  border: 1px solid #ffd4cb;
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.entry-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.entry-actions > .btn {
+  margin-top: 0;
+  height: 48px;
+}
+
+.btn-secondary {
+  background: #f5f1fe;
+  color: var(--purple);
+  border: 1px solid #e7ddfc;
+}
+
+.btn-secondary:not(:disabled):hover {
+  background: #ede5fd;
+  color: var(--purple-dark);
+}
+
+.solo-banner {
+  background: linear-gradient(135deg, #f7f2ff, #fff5f2);
+  border: 1px solid #eee2fc;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #554477;
+}
+
+.solo-eval-badge {
+  display: inline-block;
+  background: #fff0c9;
+  color: #8c6000;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font: 700 12px 'Space Grotesk', sans-serif;
+  letter-spacing: 0.5px;
+  margin: 10px 0 6px;
 }
 
 /* ── Timer ──────────────────────────────────────────────────────── */

@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { randomBytes, randomInt, timingSafeEqual, createHash } from "node:crypto";
-import { QUESTIONS } from "../lib/questions.mjs";
+import { QUESTIONS, createMatchQuestions, LEVEL_LABELS } from "../lib/questions.mjs";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -31,6 +31,8 @@ type Room = {
   answerTimes: Record<string, number>;
   revealedQuestion?: number;
   createdAt: number;
+  isSolo?: boolean;
+  questions?: any[];
 };
 
 type Session = {
@@ -157,6 +159,7 @@ function sessionFor(room: Room, player: Player, token: string): Session {
 
 function publicState(room: Room, playerId: string) {
   const now = Date.now();
+  const questions = room.questions || QUESTIONS;
   const ordered = [...room.players].sort(
     (a, b) =>
       b.score - a.score ||
@@ -164,8 +167,8 @@ function publicState(room: Room, playerId: string) {
       a.joinedAt - b.joinedAt
   );
   const currentQuestion =
-    room.questionIndex < QUESTIONS.length
-      ? QUESTIONS[room.questionIndex]
+    room.questionIndex < questions.length
+      ? questions[room.questionIndex]
       : undefined;
   const reveal = room.status === "reveal" || room.status === "finished";
 
@@ -174,9 +177,10 @@ function publicState(room: Room, playerId: string) {
       roomCode: room.code,
       status: room.status,
       hostId: room.hostId,
+      isSolo: Boolean(room.isSolo || room.players.length === 1),
       round: Math.min(3, Math.floor(room.questionIndex / 5) + 1),
       questionIndex: room.questionIndex,
-      totalQuestions: QUESTIONS.length,
+      totalQuestions: questions.length,
       serverNow: now,
       players: room.players.map((p) => ({
         id: p.id,
@@ -209,7 +213,10 @@ function publicState(room: Room, playerId: string) {
               ),
               questionNumber: room.questionIndex + 1,
               deadline: room.questionDeadline ?? now,
-              totalQuestions: QUESTIONS.length,
+              totalQuestions: questions.length,
+              level: currentQuestion?.level ?? Math.min(3, Math.floor(room.questionIndex / 5) + 1),
+              levelLabel: currentQuestion?.levelLabel ?? LEVEL_LABELS[Math.min(3, Math.floor(room.questionIndex / 5) + 1) as 1 | 2 | 3],
+              category: currentQuestion?.category ?? "General",
             },
           }
         : {}),
@@ -228,7 +235,7 @@ function publicState(room: Room, playerId: string) {
 
 /* ── Room factory ──────────────────────────────────────────────── */
 
-function initialRoom(code: string, player: Player): Room {
+function initialRoom(code: string, player: Player, isSolo = false): Room {
   const now = Date.now();
   return {
     code,
@@ -242,6 +249,8 @@ function initialRoom(code: string, player: Player): Room {
     answers: {},
     answerTimes: {},
     createdAt: now,
+    isSolo: Boolean(isSolo),
+    questions: createMatchQuestions(true),
   };
 }
 
@@ -249,6 +258,7 @@ function initialRoom(code: string, player: Player): Room {
 
 function advanceDue(room: Room) {
   const now = Date.now();
+  const questions = room.questions || QUESTIONS;
 
   // Phase: playing → reveal (time expired or everyone answered)
   if (
@@ -257,7 +267,7 @@ function advanceDue(room: Room) {
     (now >= room.questionDeadline ||
       room.players.every((p) => room.answers[p.id] !== undefined))
   ) {
-    const q = QUESTIONS[room.questionIndex];
+    const q = questions[room.questionIndex];
     for (const p of room.players) {
       const submitted = room.answers[p.id];
       if (submitted === q.answer) {
@@ -291,7 +301,7 @@ function advanceDue(room: Room) {
     room.answerTimes = {};
     room.revealedQuestion = undefined;
 
-    if (room.questionIndex >= QUESTIONS.length) {
+    if (room.questionIndex >= questions.length) {
       room.status = "finished";
     } else {
       room.status = "playing";
@@ -353,6 +363,7 @@ export default async (request: Request) => {
     /* ── Create room ──────────────────────────────────────────── */
     if (action === "create") {
       const name = cleanName(body.name);
+      const isSolo = Boolean(body.isSolo);
       for (let attempt = 0; attempt < 8; attempt++) {
         const code = makeCode();
         const token = makeToken();
@@ -366,7 +377,17 @@ export default async (request: Request) => {
           lastSeen: Date.now(),
           isHost: true,
         };
-        const room = initialRoom(code, player);
+        const room = initialRoom(code, player, isSolo);
+
+        if (isSolo && body.autoStart) {
+          const now = Date.now();
+          room.status = "playing";
+          room.startedAt = now;
+          room.questionStartedAt = now;
+          room.questionDeadline = now + QUESTION_MS;
+          room.updatedAt = now;
+        }
+
         try {
           await writeRoom(room);
           return json(200, {
@@ -519,10 +540,10 @@ export default async (request: Request) => {
             );
           if (room.status !== "lobby")
             throw new Error("This game has already started.");
-          if (room.players.length < 2)
-            throw new Error(
-              "At least two players are required."
-            );
+
+          if (room.players.length === 1) {
+            room.isSolo = true;
+          }
 
           const now = Date.now();
           room.status = "playing";

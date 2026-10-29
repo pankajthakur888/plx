@@ -8,26 +8,28 @@ A responsive, colorful quiz game for **2–8 players**. Three rounds, five quest
 
 ## ✨ Features
 
-- 🎯 **Real multiplayer** — Create rooms, share codes, play across devices
+- 🎯 **Real multiplayer & Solo Warm-up** — Play 1-player solo warmup sessions or 2–8 player party battles
+- 📊 **Difficulty Levels & Categories** — Level 1 (Warm-up), Level 2 (Brain Rush), Level 3 (Final Showdown) across Science, Geography, History, Tech, Math, Art, Space & Nature
 - 📱 **Responsive design** — Optimized for phones, tablets, and desktops
 - 🔒 **Server-authoritative** — All scoring, validation, and answer reveals are server-side
 - ⚡ **Speed bonus** — Faster correct answers earn more points (up to 1,500 per question)
 - 🔄 **Reconnection** — Drop out and rejoin without losing your score
-- 🎉 **Confetti celebration** — Canvas-based confetti on the winner screen
+- 🎉 **Confetti celebration** — Canvas-based confetti on the winner/finish screen
 - 🏆 **Live leaderboard** — Rankings update in real-time during play
 - 🔐 **No answer leaks** — Correct answers are never sent until the reveal phase
 
-## 🎮 Game Rules
+## 🎮 Game Rules & Structure
 
-| | |
+| Mode | Description |
 |---|---|
-| **Players** | 2–8 per room |
-| **Rounds** | 3 (Warm-up → Brain Rush → Final Showdown) |
-| **Questions** | 5 per round, 15 total |
-| **Timer** | 15 seconds per question |
-| **Correct answer** | 1,000 base + up to 500 speed bonus |
-| **Wrong / No answer** | 0 points |
-| **Tiebreaker** | Most correct answers, then earliest join |
+| **🎯 Solo Warm-up** | Instant 1-player practice session to sharpen your speed and accuracy |
+| **👥 Multiplayer Battle** | 2–8 players compete in real-time for leaderboard supremacy |
+| **📊 Level 1: Warm-up** | Questions 1–5 · Approachable trivia to get in the zone |
+| **🔥 Level 2: Brain Rush** | Questions 6–10 · Medium difficulty, faster pace |
+| **👑 Level 3: Showdown** | Questions 11–15 · Harder questions, decisive points |
+| **⏱️ Timer** | 15 seconds per question |
+| **Points** | 1,000 base + up to 500 speed bonus |
+| **Wrong / Timeout** | 0 points |
 
 ### Speed Bonus Formula
 

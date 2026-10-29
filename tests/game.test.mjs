@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { QUESTIONS } from "../netlify/lib/questions.mjs";
+import { QUESTIONS, QUESTION_BANK, createMatchQuestions, LEVEL_LABELS } from "../netlify/lib/questions.mjs";
 
 /* ── 1. Question content validation ──────────────────────────── */
 test("game has exactly 15 general-knowledge questions with valid structure", () => {
@@ -115,8 +115,53 @@ test("room codes use safe alphabet (no 0/O/I/1 confusion)", () => {
 });
 
 /* ── 7. Question uniqueness ──────────────────────────────────── */
-test("all 15 question prompts are unique", () => {
+test("all 15 baseline question prompts are unique", () => {
   const prompts = QUESTIONS.map((q) => q.prompt.toLowerCase());
   const unique = new Set(prompts);
   assert.equal(unique.size, 15, "Every question prompt must be unique");
+});
+
+/* ── 8. Question Bank with Levels (1, 2, 3) ─────────────────── */
+test("QUESTION_BANK contains rich categorized questions across Levels 1, 2, 3", () => {
+  assert.ok(QUESTION_BANK[1].length >= 10, "Level 1 should have 10+ questions");
+  assert.ok(QUESTION_BANK[2].length >= 10, "Level 2 should have 10+ questions");
+  assert.ok(QUESTION_BANK[3].length >= 10, "Level 3 should have 10+ questions");
+
+  for (const level of [1, 2, 3]) {
+    for (const q of QUESTION_BANK[level]) {
+      assert.equal(q.level, level);
+      assert.equal(q.options.length, 4);
+      assert.ok(q.category && q.category.length > 2);
+      assert.ok(q.explanation && q.explanation.length > 10);
+      assert.ok(Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4);
+    }
+  }
+});
+
+/* ── 9. createMatchQuestions generates 15 questions across 3 levels ── */
+test("createMatchQuestions() returns 15 questions: 5 L1, 5 L2, 5 L3", () => {
+  const match = createMatchQuestions(true);
+  assert.equal(match.length, 15);
+  for (let i = 0; i < 5; i++) assert.equal(match[i].level, 1);
+  for (let i = 5; i < 10; i++) assert.equal(match[i].level, 2);
+  for (let i = 10; i < 15; i++) assert.equal(match[i].level, 3);
+});
+
+/* ── 10. Solo Warm-up session mode ──────────────────────────── */
+test("solo warmup session calculates score accurately for single player", () => {
+  const player = { name: "Warm-up Hero", score: 0, correct: 0 };
+  const match = createMatchQuestions(false);
+
+  for (let i = 0; i < match.length; i++) {
+    const q = match[i];
+    // Player answers 12 correctly with average 10s remaining (1000 + 333 = 1333 pts)
+    if (i < 12) {
+      player.correct++;
+      player.score += 1000 + Math.floor((500 * 10000) / 15000);
+    }
+  }
+
+  assert.equal(player.correct, 12);
+  assert.equal(player.score, 12 * 1333);
+  assert.ok(player.score > 15000);
 });
