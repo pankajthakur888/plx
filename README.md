@@ -9,6 +9,7 @@ A responsive, colorful quiz game for **2–8 players**. Three rounds, five quest
 ## ✨ Features
 
 - 🎯 **Real multiplayer & Solo Warm-up** — Play 1-player solo warmup sessions or 2–8 player party battles
+- 📧 **Email ID Verification for Solo Warm-up** — Secure 6-digit verification code (OTP) required to unlock solo warm-up sessions
 - 📊 **Difficulty Levels & Categories** — Level 1 (Warm-up), Level 2 (Brain Rush), Level 3 (Final Showdown) across Science, Geography, History, Tech, Math, Art, Space & Nature
 - 📱 **Responsive design** — Optimized for phones, tablets, and desktops
 - 🔒 **Server-authoritative** — All scoring, validation, and answer reveals are server-side

@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
+  CheckCircle2,
   Clock3,
   Crown,
   Gamepad2,
+  KeyRound,
   Link2,
   LoaderCircle,
   LogOut,
+  Mail,
   PartyPopper,
   Plus,
   RefreshCw,
@@ -23,6 +26,8 @@ import type { PublicState } from "./types";
 /* ── Config ────────────────────────────────────────────────────── */
 const API = "/.netlify/functions/game";
 const SESSION_KEY = "plx-v0-session";
+const EMAIL_KEY = "plx-v0-email";
+const EMAIL_TOKEN_KEY = "plx-v0-email-token";
 const POLL_MS = 900;
 
 type Session = {
@@ -30,6 +35,7 @@ type Session = {
   playerId: string;
   token: string;
   name: string;
+  verifiedEmail?: string;
 };
 
 const letters = ["A", "B", "C", "D"];
@@ -160,6 +166,22 @@ function App() {
   const confettiRef = useRef<HTMLCanvasElement>(null);
   const confettiFired = useRef(false);
 
+  /* ── Email Verification State (Required for Solo Warm-up) ─────── */
+  const [verifiedEmail, setVerifiedEmail] = useState<string>(
+    () => localStorage.getItem(EMAIL_KEY) || ""
+  );
+  const [emailToken, setEmailToken] = useState<string>(
+    () => localStorage.getItem(EMAIL_TOKEN_KEY) || ""
+  );
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailStep, setEmailStep] = useState<"email" | "code">("email");
+  const [emailInput, setEmailInput] = useState(() => localStorage.getItem(EMAIL_KEY) || "");
+  const [otpInput, setOtpInput] = useState("");
+  const [otpPreview, setOtpPreview] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailModalError, setEmailModalError] = useState("");
+  const [emailModalNotice, setEmailModalNotice] = useState("");
+
   /* ── Refresh (poll server state) ─────────────────────────────── */
   const refresh = useCallback(async (s: Session, silent = true) => {
     if (inFlight.current) return;
@@ -256,16 +278,81 @@ function App() {
     }
   };
 
-  /* ── Room actions ────────────────────────────────────────────── */
-  const startSoloWarmup = async () => {
+  /* ── Solo Warm-up & Email Verification Handlers ───────────────── */
+  const handleOpenSoloWarmup = () => {
+    setError("");
+    if (verifiedEmail && emailToken) {
+      void startSoloWarmup(verifiedEmail, emailToken);
+    } else {
+      setEmailStep("email");
+      setEmailModalError("");
+      setEmailModalNotice("");
+      setShowEmailModal(true);
+    }
+  };
+
+  const handleSendVerificationCode = async () => {
+    const email = emailInput.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailModalError("Please enter a valid email address (e.g. name@example.com).");
+      return;
+    }
+    setEmailLoading(true);
+    setEmailModalError("");
+    setEmailModalNotice("");
+    try {
+      const data = await callApi("send_verification", { email });
+      setOtpPreview((data.previewCode as string) || "");
+      setEmailStep("code");
+      setEmailModalNotice(`Verification code sent to ${email}`);
+    } catch (e) {
+      setEmailModalError(e instanceof Error ? e.message : "Failed to send verification code.");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleVerifyCodeAndStart = async () => {
+    const code = otpInput.trim();
+    if (code.length !== 6) {
+      setEmailModalError("Please enter the 6-digit verification code.");
+      return;
+    }
+    setEmailLoading(true);
+    setEmailModalError("");
+    try {
+      const data = await callApi("verify_email", { email: emailInput.trim(), code });
+      const email = data.email as string;
+      const token = data.emailToken as string;
+      setVerifiedEmail(email);
+      setEmailToken(token);
+      localStorage.setItem(EMAIL_KEY, email);
+      localStorage.setItem(EMAIL_TOKEN_KEY, token);
+      setShowEmailModal(false);
+
+      if (state && state.status === "lobby" && state.players.length === 1) {
+        await act("start", { email, emailToken: token });
+      } else {
+        await startSoloWarmup(email, token);
+      }
+    } catch (e) {
+      setEmailModalError(e instanceof Error ? e.message : "Invalid code. Please try again.");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const startSoloWarmup = async (email: string, token: string) => {
     setLoading(true);
     setError("");
     try {
-      const playerName = name.trim() || "Warm-up Player";
+      const playerName = name.trim() || email.split("@")[0] || "Solo Player";
       const data = await callApi("create", {
         name: playerName,
         isSolo: true,
         autoStart: true,
+        email,
+        emailToken: token,
       });
       setSession(data.session as Session);
       saveSession(data.session as Session);
@@ -376,12 +463,161 @@ function App() {
   const roundName = ROUND_NAMES[state?.round ?? 0] || "";
 
   /* ═════════════════════════════════════════════════════════════
+     RENDER: Email Verification Modal (for Solo Warm-up)
+     ═════════════════════════════════════════════════════════════ */
+  const renderEmailModal = () => {
+    if (!showEmailModal) return null;
+    return (
+      <div className="modal-backdrop" onClick={() => setShowEmailModal(false)}>
+        <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="modal-close"
+            onClick={() => setShowEmailModal(false)}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+
+          {emailStep === "email" ? (
+            <>
+              <div className="modal-icon">
+                <Mail size={28} />
+              </div>
+              <h2>Solo Warm-up Verification</h2>
+              <p className="modal-sub">
+                Enter your email ID to verify your identity and start your solo warm-up practice.
+              </p>
+
+              <label className="field-label" htmlFor="verify-email-input">
+                EMAIL ADDRESS
+              </label>
+              <div className="input-with-icon">
+                <input
+                  id="verify-email-input"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSendVerificationCode();
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              {emailModalError && (
+                <div className="alert alert-error">
+                  <X size={15} />
+                  {emailModalError}
+                </div>
+              )}
+
+              <button
+                className="btn btn-primary full"
+                disabled={emailLoading || !emailInput.trim()}
+                onClick={() => void handleSendVerificationCode()}
+              >
+                {emailLoading ? <LoaderCircle className="spin" size={18} /> : <ArrowRight size={18} />}
+                Send 6-Digit Code
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="modal-icon modal-icon-key">
+                <KeyRound size={28} />
+              </div>
+              <h2>Enter Verification Code</h2>
+              <p className="modal-sub">
+                We sent a 6-digit code to <strong>{emailInput}</strong>.
+              </p>
+
+              {otpPreview && (
+                <div
+                  className="demo-code-pill"
+                  onClick={() => setOtpInput(otpPreview)}
+                  title="Click to auto-fill code"
+                >
+                  <Sparkles size={13} />
+                  <span>Demo Preview Code: <strong>{otpPreview}</strong> (Click to fill)</span>
+                </div>
+              )}
+
+              <label className="field-label" htmlFor="verify-otp-input">
+                6-DIGIT CODE
+              </label>
+              <input
+                id="verify-otp-input"
+                className="otp-code-input"
+                maxLength={6}
+                placeholder="000000"
+                value={otpInput}
+                onChange={(e) => setOtpInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && otpInput.length === 6) void handleVerifyCodeAndStart();
+                }}
+                autoFocus
+              />
+
+              {emailModalError && (
+                <div className="alert alert-error">
+                  <X size={15} />
+                  {emailModalError}
+                </div>
+              )}
+              {emailModalNotice && (
+                <div className="alert alert-notice">
+                  <CheckCircle2 size={15} />
+                  {emailModalNotice}
+                </div>
+              )}
+
+              <button
+                className="btn btn-primary full"
+                disabled={emailLoading || otpInput.trim().length !== 6}
+                onClick={() => void handleVerifyCodeAndStart()}
+              >
+                {emailLoading ? <LoaderCircle className="spin" size={18} /> : <Check size={18} />}
+                Verify & Start Solo Warm-up
+              </button>
+
+              <div className="modal-footer-links">
+                <button
+                  type="button"
+                  className="link-subtle"
+                  disabled={emailLoading}
+                  onClick={() => void handleSendVerificationCode()}
+                >
+                  Resend code
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  className="link-subtle"
+                  disabled={emailLoading}
+                  onClick={() => {
+                    setEmailStep("email");
+                    setEmailModalError("");
+                    setEmailModalNotice("");
+                  }}
+                >
+                  Change email
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  /* ═════════════════════════════════════════════════════════════
      RENDER: Landing / Create-or-Join
      ═════════════════════════════════════════════════════════════ */
 
   if (!session || !state)
     return (
       <main className="page landing">
+        {renderEmailModal()}
         <header className="topbar">
           <a className="brand" href="#">
             <span className="brand-mark">
@@ -456,11 +692,29 @@ function App() {
               placeholder="e.g. Quiz Wizard"
               autoComplete="nickname"
             />
+            {verifiedEmail ? (
+              <div className="verified-status-banner">
+                <CheckCircle2 size={15} />
+                <span>Verified email: <strong>{verifiedEmail}</strong></span>
+                <button
+                  type="button"
+                  className="link-subtle"
+                  onClick={() => {
+                    localStorage.removeItem(EMAIL_KEY);
+                    localStorage.removeItem(EMAIL_TOKEN_KEY);
+                    setVerifiedEmail("");
+                    setEmailToken("");
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            ) : null}
             <div className="entry-actions">
               <button
                 className="btn btn-primary full"
                 disabled={loading}
-                onClick={() => void startSoloWarmup()}
+                onClick={() => void handleOpenSoloWarmup()}
               >
                 {loading ? (
                   <LoaderCircle className="spin" />
@@ -546,6 +800,7 @@ function App() {
   if (state.status === "lobby")
     return (
       <main className="page game-page">
+        {renderEmailModal()}
         <header className="topbar">
           <a className="brand" href="#">
             <span className="brand-mark">
@@ -642,11 +897,33 @@ function App() {
                 </div>
               ))}
             </div>
+            {isHost && state.players.length === 1 && (state.verifiedEmail || verifiedEmail) && (
+              <div className="verified-status-banner">
+                <CheckCircle2 size={15} />
+                <span>Verified for Solo: <strong>{state.verifiedEmail || verifiedEmail}</strong></span>
+              </div>
+            )}
             {isHost ? (
               <button
                 className="btn btn-primary full start-btn"
                 disabled={loading}
-                onClick={() => void act("start")}
+                onClick={() => {
+                  if (state.players.length === 1) {
+                    if (state.verifiedEmail || (verifiedEmail && emailToken)) {
+                      void act("start", {
+                        email: state.verifiedEmail || verifiedEmail,
+                        emailToken: emailToken,
+                      });
+                    } else {
+                      setEmailStep("email");
+                      setEmailModalError("");
+                      setEmailModalNotice("");
+                      setShowEmailModal(true);
+                    }
+                  } else {
+                    void act("start");
+                  }
+                }}
               >
                 {state.players.length === 1 ? (
                   <>
@@ -732,6 +1009,11 @@ function App() {
                     ? "🧠 Great Warm-up — Sharp Brain!"
                     : "🌱 Good Practice Session!"}
                 </div>
+                {(state.verifiedEmail || verifiedEmail) && (
+                  <div className="verified-badge-row">
+                    <CheckCircle2 size={15} /> Verified Player: <strong>{state.verifiedEmail || verifiedEmail}</strong>
+                  </div>
+                )}
                 <p>
                   {ordered[0]?.correct ?? 0} of 15 questions answered correctly.
                 </p>
@@ -877,6 +1159,11 @@ function App() {
               {state.isSolo && (
                 <span className="solo-pill">
                   🎯 SOLO WARM-UP
+                </span>
+              )}
+              {state.isSolo && (state.verifiedEmail || verifiedEmail) && (
+                <span className="verified-pill">
+                  <CheckCircle2 size={12} /> {state.verifiedEmail || verifiedEmail}
                 </span>
               )}
             </div>

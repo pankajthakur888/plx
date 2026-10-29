@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomInt, timingSafeEqual, createHash } from "node:crypto";
 import { QUESTIONS, createMatchQuestions, LEVEL_LABELS } from "./netlify/lib/questions.mjs";
+import { cleanEmail, generateVerificationCode, verifyEmailCode, isEmailVerified } from "./netlify/lib/auth.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +87,7 @@ function sessionFor(room, player, token) {
     playerId: player.id,
     token,
     name: player.name,
+    verifiedEmail: player.email || room.verifiedEmail || undefined,
   };
 }
 
@@ -166,6 +168,7 @@ function publicState(room, playerId) {
       status: room.status,
       hostId: room.hostId,
       isSolo: Boolean(room.isSolo || room.players.length === 1),
+      verifiedEmail: room.verifiedEmail || null,
       round: Math.min(3, Math.floor(room.questionIndex / 5) + 1),
       questionIndex: room.questionIndex,
       totalQuestions: questions.length,
@@ -220,9 +223,48 @@ function publicState(room, playerId) {
 function handleGameAction(body) {
   const action = typeof body.action === "string" ? body.action : "";
 
+  if (action === "send_verification") {
+    const result = generateVerificationCode(body.email);
+    console.log(`[AUTH] Verification code for ${result.email}: ${result.code}`);
+    return {
+      ok: true,
+      email: result.email,
+      expiresAt: result.expiresAt,
+      message: `Verification code sent to ${result.email}.`,
+      previewCode: result.code, // provided so dev / demo / tests work effortlessly
+    };
+  }
+
+  if (action === "verify_email") {
+    const result = verifyEmailCode(body.email, body.code);
+    return {
+      ok: true,
+      email: result.email,
+      emailToken: result.emailToken,
+      message: "Email verified successfully!",
+    };
+  }
+
   if (action === "create") {
     const name = cleanName(body.name);
     const isSolo = Boolean(body.isSolo);
+    let verifiedEmail = null;
+
+    if (isSolo) {
+      const email = cleanEmail(body.email);
+      const emailToken = typeof body.emailToken === "string" ? body.emailToken : "";
+      const verificationCode = typeof body.verificationCode === "string" ? body.verificationCode : "";
+
+      if (emailToken && isEmailVerified(email, emailToken)) {
+        verifiedEmail = email;
+      } else if (verificationCode) {
+        const verifyRes = verifyEmailCode(email, verificationCode);
+        verifiedEmail = verifyRes.email;
+      } else {
+        throw new Error("Email ID verification is required for Solo Warm-up.");
+      }
+    }
+
     let code = "";
     for (let attempt = 0; attempt < 10; attempt++) {
       const candidate = makeCode();
@@ -243,8 +285,12 @@ function handleGameAction(body) {
       joinedAt: Date.now(),
       lastSeen: Date.now(),
       isHost: true,
+      email: verifiedEmail || undefined,
     };
     const room = initialRoom(code, player, isSolo);
+    if (verifiedEmail) {
+      room.verifiedEmail = verifiedEmail;
+    }
 
     // If solo mode was requested with immediate start, jump right into playing
     if (isSolo && body.autoStart) {
@@ -329,6 +375,23 @@ function handleGameAction(body) {
 
     if (room.players.length === 1) {
       room.isSolo = true;
+    }
+
+    if (room.isSolo && !room.verifiedEmail) {
+      const email = typeof body.email === "string" ? cleanEmail(body.email) : null;
+      const emailToken = typeof body.emailToken === "string" ? body.emailToken : "";
+      const verificationCode = typeof body.verificationCode === "string" ? body.verificationCode : "";
+
+      if (email && emailToken && isEmailVerified(email, emailToken)) {
+        room.verifiedEmail = email;
+        player.email = email;
+      } else if (email && verificationCode) {
+        const verifyRes = verifyEmailCode(email, verificationCode);
+        room.verifiedEmail = verifyRes.email;
+        player.email = verifyRes.email;
+      } else {
+        throw new Error("Email ID verification is required for Solo Warm-up.");
+      }
     }
 
     const now = Date.now();

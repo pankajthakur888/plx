@@ -8,6 +8,7 @@ export type PublicPlayer = {
   connected: boolean;
   isHost: boolean;
   answered: boolean;
+  email?: string;
 };
 
 export type PublicQuestion = {
@@ -39,6 +40,7 @@ export type PublicState = {
   message?: string;
   serverNow: number;
   isSolo?: boolean;
+  verifiedEmail?: string | null;
 };
 
 export type ApiError = { error: string };

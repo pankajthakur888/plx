@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { randomBytes, randomInt, timingSafeEqual, createHash } from "node:crypto";
 import { QUESTIONS, createMatchQuestions, LEVEL_LABELS } from "../lib/questions.mjs";
+import { cleanEmail, generateVerificationCode, verifyEmailCode, isEmailVerified } from "../lib/auth.mjs";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -13,6 +14,7 @@ type Player = {
   joinedAt: number;
   lastSeen: number;
   isHost: boolean;
+  email?: string;
 };
 
 type Room = {
@@ -32,6 +34,7 @@ type Room = {
   revealedQuestion?: number;
   createdAt: number;
   isSolo?: boolean;
+  verifiedEmail?: string;
   questions?: any[];
 };
 
@@ -40,6 +43,7 @@ type Session = {
   playerId: string;
   token: string;
   name: string;
+  verifiedEmail?: string;
 };
 
 /* ── Constants ─────────────────────────────────────────────────── */
@@ -152,6 +156,7 @@ function sessionFor(room: Room, player: Player, token: string): Session {
     playerId: player.id,
     token,
     name: player.name,
+    verifiedEmail: player.email || room.verifiedEmail || undefined,
   };
 }
 
@@ -178,6 +183,7 @@ function publicState(room: Room, playerId: string) {
       status: room.status,
       hostId: room.hostId,
       isSolo: Boolean(room.isSolo || room.players.length === 1),
+      verifiedEmail: room.verifiedEmail || null,
       round: Math.min(3, Math.floor(room.questionIndex / 5) + 1),
       questionIndex: room.questionIndex,
       totalQuestions: questions.length,
@@ -360,10 +366,50 @@ export default async (request: Request) => {
   const action = typeof body.action === "string" ? body.action : "";
 
   try {
+    /* ── Send email verification code ────────────────────────── */
+    if (action === "send_verification") {
+      const result = generateVerificationCode(body.email);
+      return json(200, {
+        ok: true,
+        email: result.email,
+        expiresAt: result.expiresAt,
+        message: `Verification code sent to ${result.email}.`,
+        previewCode: result.code,
+      });
+    }
+
+    /* ── Verify email code ────────────────────────────────────── */
+    if (action === "verify_email") {
+      const result = verifyEmailCode(body.email, body.code as string);
+      return json(200, {
+        ok: true,
+        email: result.email,
+        emailToken: result.emailToken,
+        message: "Email verified successfully!",
+      });
+    }
+
     /* ── Create room ──────────────────────────────────────────── */
     if (action === "create") {
       const name = cleanName(body.name);
       const isSolo = Boolean(body.isSolo);
+      let verifiedEmail: string | undefined = undefined;
+
+      if (isSolo) {
+        const email = cleanEmail(body.email);
+        const emailToken = typeof body.emailToken === "string" ? body.emailToken : "";
+        const verificationCode = typeof body.verificationCode === "string" ? body.verificationCode : "";
+
+        if (emailToken && isEmailVerified(email, emailToken)) {
+          verifiedEmail = email;
+        } else if (verificationCode) {
+          const verifyRes = verifyEmailCode(email, verificationCode);
+          verifiedEmail = verifyRes.email;
+        } else {
+          throw new Error("Email ID verification is required for Solo Warm-up.");
+        }
+      }
+
       for (let attempt = 0; attempt < 8; attempt++) {
         const code = makeCode();
         const token = makeToken();
@@ -376,8 +422,12 @@ export default async (request: Request) => {
           joinedAt: Date.now(),
           lastSeen: Date.now(),
           isHost: true,
+          email: verifiedEmail,
         };
         const room = initialRoom(code, player, isSolo);
+        if (verifiedEmail) {
+          room.verifiedEmail = verifiedEmail;
+        }
 
         if (isSolo && body.autoStart) {
           const now = Date.now();
@@ -543,6 +593,23 @@ export default async (request: Request) => {
 
           if (room.players.length === 1) {
             room.isSolo = true;
+          }
+
+          if (room.isSolo && !room.verifiedEmail) {
+            const email = typeof body.email === "string" ? cleanEmail(body.email) : null;
+            const emailToken = typeof body.emailToken === "string" ? body.emailToken : "";
+            const verificationCode = typeof body.verificationCode === "string" ? body.verificationCode : "";
+
+            if (email && emailToken && isEmailVerified(email, emailToken)) {
+              room.verifiedEmail = email;
+              player.email = email;
+            } else if (email && verificationCode) {
+              const verifyRes = verifyEmailCode(email, verificationCode);
+              room.verifiedEmail = verifyRes.email;
+              player.email = verifyRes.email;
+            } else {
+              throw new Error("Email ID verification is required for Solo Warm-up.");
+            }
           }
 
           const now = Date.now();

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { QUESTIONS, QUESTION_BANK, createMatchQuestions, LEVEL_LABELS } from "../netlify/lib/questions.mjs";
+import { cleanEmail, generateVerificationCode, verifyEmailCode, isEmailVerified } from "../netlify/lib/auth.mjs";
 
 /* ── 1. Question content validation ──────────────────────────── */
 test("game has exactly 15 general-knowledge questions with valid structure", () => {
@@ -166,4 +167,53 @@ test("solo warmup session calculates score accurately for single player", () => 
   assert.equal(player.correct, 12);
   assert.equal(player.score, 12 * 1333);
   assert.ok(player.score > 15000);
+});
+
+/* ── 11. Email formatting and normalization ─────────────────── */
+test("cleanEmail validates valid emails and rejects bad formats", () => {
+  assert.equal(cleanEmail(" User@Example.COM "), "user@example.com");
+  assert.equal(cleanEmail("pankaj.thakur888@gmail.com"), "pankaj.thakur888@gmail.com");
+
+  assert.throws(() => cleanEmail(""), /valid email/);
+  assert.throws(() => cleanEmail("notanemail"), /Invalid email address format/);
+  assert.throws(() => cleanEmail("@missingusername.com"), /Invalid email address format/);
+  assert.throws(() => cleanEmail("user@.com"), /Invalid email address format/);
+});
+
+/* ── 12. Email verification code & token lifecycle ─────────── */
+test("generateVerificationCode and verifyEmailCode lifecycle", () => {
+  const email = "player@plx.test";
+  const gen = generateVerificationCode(email);
+
+  assert.equal(gen.email, email);
+  assert.equal(gen.code.length, 6);
+  assert.ok(/^\d{6}$/.test(gen.code), "Code must be 6 digits");
+  assert.ok(gen.expiresAt > Date.now());
+
+  // Bad code fails
+  assert.throws(() => verifyEmailCode(email, "000000"), /Incorrect verification code/);
+
+  // Correct code succeeds and issues token
+  const verified = verifyEmailCode(email, gen.code);
+  assert.equal(verified.success, true);
+  assert.equal(verified.email, email);
+  assert.ok(verified.emailToken && verified.emailToken.length === 64);
+
+  // isEmailVerified succeeds with issued token
+  assert.equal(isEmailVerified(email, verified.emailToken), true);
+  assert.equal(isEmailVerified(email, "badtoken123"), false);
+  assert.equal(isEmailVerified("other@plx.test", verified.emailToken), false);
+});
+
+/* ── 13. Solo Warm-up email verification requirement ────────── */
+test("solo warm-up requires email verification while multiplayer room does not", () => {
+  const email = "soloplayer@plx.test";
+  const { code } = generateVerificationCode(email);
+  const { emailToken } = verifyEmailCode(email, code);
+
+  // Verified credentials check
+  assert.ok(isEmailVerified(email, emailToken));
+
+  // Unverified email check fails
+  assert.equal(isEmailVerified("unverified@plx.test", emailToken), false);
 });
