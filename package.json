@@ -9,6 +9,7 @@
     "start": "node server.mjs",
     "preview": "vite preview",
     "test:game": "node --test tests/game.test.mjs",
+    "test:docker": "node tests/docker-flow.test.mjs",
     "check": "npm run test:game && npm run build"
   },
   "dependencies": {

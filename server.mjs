@@ -402,8 +402,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Static File Serving
-  if (req.method === "GET") {
+  // Static File Serving (GET and HEAD)
+  if (req.method === "GET" || req.method === "HEAD") {
     let filePath = path.join(DIST_DIR, pathname === "/" ? "index.html" : pathname);
     
     // Normalize path to prevent directory traversal
@@ -420,22 +420,32 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, {
           "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
           "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+          "Content-Length": stats.size,
         });
+        if (req.method === "HEAD") {
+          res.end();
+          return;
+        }
         fs.createReadStream(safePath).pipe(res);
       } else {
         // SPA Fallback: serve dist/index.html
         const indexPath = path.join(DIST_DIR, "index.html");
-        fs.readFile(indexPath, (err2, data) => {
-          if (err2) {
+        fs.stat(indexPath, (err2, stats2) => {
+          if (err2 || !stats2.isFile()) {
             res.writeHead(404, { "Content-Type": "text/plain" });
             res.end("Frontend build not found. Run 'npm run build' first.");
-          } else {
-            res.writeHead(200, {
-              "Content-Type": "text/html; charset=utf-8",
-              "Cache-Control": "no-cache",
-            });
-            res.end(data);
+            return;
           }
+          res.writeHead(200, {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Content-Length": stats2.size,
+          });
+          if (req.method === "HEAD") {
+            res.end();
+            return;
+          }
+          fs.createReadStream(indexPath).pipe(res);
         });
       }
     });
